@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+message: "If you use these builds, please cite the Raven framework (preferred citation below) and, optionally, this repository."
+title: "raven-macos: NetCDF-enabled macOS builds of the Raven hydrological modelling framework"
+type: software
+authors:
+  - family-names: Jatel
+    given-names: Nelson
+repository-code: "https://github.com/DrNelsonJatel/raven-macos"
+license: MIT
+keywords:
+  - hydrology
+  - Raven
+  - macOS
+  - NetCDF
+preferred-citation:
+  type: article
+  title: "Flexible watershed simulation with the Raven hydrological modelling framework"
+  authors:
+    - family-names: Craig
+      given-names: James R.
+    - family-names: Brown
+      given-names: Genevieve
+    - family-names: Chlumsky
+      given-names: Robert
+    - family-names: Jenkinson
+      given-names: R. Wayne
+    - family-names: Jost
+      given-names: Georg
+    - family-names: Lee
+      given-names: Konhee
+    - family-names: Mai
+      given-names: Juliane
+    - family-names: Serrer
+      given-names: Martin
+    - family-names: Sgro
+      given-names: Nicholas
+    - family-names: Shafii
+      given-names: Mahyar
+    - family-names: Snowdon
+      given-names: Andrew P.
+    - family-names: Tolson
+      given-names: Bryan A.
+  journal: "Environmental Modelling & Software"
+  volume: 129
+  start: 104728
+  year: 2020
+  doi: "10.1016/j.envsoft.2020.104728"

@@ -1,0 +1,62 @@
+name: build
+
+# Builds both profiles on an Apple Silicon runner, runs packaging QAQC
+# (inside build.sh) and the benchmark suite, and attaches the archives to a
+# draft release when a tag like v4.12-1 is pushed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      raven_tag:
+        description: "Upstream Raven tag to build"
+        default: "v4.12"
+  push:
+    tags: ["v*-*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14   # arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Raven tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "raven=${GITHUB_REF_NAME%-*}" >> "$GITHUB_OUTPUT"   # v4.12-1 -> v4.12
+          else
+            echo "raven=${{ github.event.inputs.raven_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build reference profile
+        run: ./build.sh "${{ steps.tag.outputs.raven }}" reference
+
+      - name: Build fast profile
+        run: ./build.sh "${{ steps.tag.outputs.raven }}" fast
+
+      - name: Benchmark reference build
+        run: ./benchmark.sh "$PWD/dist/raven-${{ steps.tag.outputs.raven }}-macos-arm64/Raven"
+
+      - name: Compare fast against reference (informational)
+        run: |
+          ./benchmark.sh "$PWD/dist/raven-${{ steps.tag.outputs.raven }}-macos-arm64-fast/Raven" \
+                         "$PWD/dist/raven-${{ steps.tag.outputs.raven }}-macos-arm64/Raven" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raven-${{ steps.tag.outputs.raven }}-macos-arm64
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+      - name: Draft release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 \
+            --draft --title "Raven ${{ steps.tag.outputs.raven }} for macOS arm64 ($GITHUB_REF_NAME)" \
+            --notes-file CHANGELOG.md

@@ -1,0 +1,6 @@
+src/
+dist/
+*.tar.gz
+*.sha256
+.DS_Store
+Raven_errors.txt
