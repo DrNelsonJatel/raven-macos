@@ -1,0 +1,117 @@
+--- a/src/Reservoir.cpp
++++ b/src/Reservoir.cpp
+@@ -1668,7 +1668,22 @@
+     }
+   }
+ 
+-  double gamma=V_old+((Qin_old+Qin_new)-_Qout+2.0*precip-ET*A_old-seep_old-(ext_old+ext_new))/2.0*(tstep*SEC_PER_DAY);//[m3]
++  // OBWB patch D104 (2026-10-15): _Qout holds only the main-outlet outflow at the start of the step, because
++  // control-structure flow sent to a non-downstream target is subtracted from res_outflow at the end of this
++  // routine and stored without it (UpdateStage). Every start-of-step outflow term below needs the TOTAL outflow,
++  // so the structure flow to non-downstream targets at the start of the step (_aQstruct, as stored by UpdateStage)
++  // is added back. With no such structure Qout_old is exactly _Qout (nothing is added), so results are unchanged.
++  double Qout_old=_Qout;
++  {
++    long long downID_old=DOESNT_EXIST;
++    if (_pDownSB!=NULL){downID_old=_pDownSB->GetID();}
++    for(int i=0; i<_nControlStructures; i++) {
++      if (_pControlStructures[i]->GetTargetBasinID()!=downID_old){ Qout_old+=_aQstruct[i]; }
++    }
++  }
++  // OBWB patch D104: original line was
++  // double gamma=V_old+((Qin_old+Qin_new)-_Qout+2.0*precip-ET*A_old-seep_old-(ext_old+ext_new))/2.0*(tstep*SEC_PER_DAY);//[m3]
++  double gamma=V_old+((Qin_old+Qin_new)-Qout_old+2.0*precip-ET*A_old-seep_old-(ext_old+ext_new))/2.0*(tstep*SEC_PER_DAY);//[m3]
+   if(gamma<0)
+   {//reservoir dried out; no solution available. (f is always >0, so gamma must be as well)
+    //only remaining filling action is via seepage, which is likely not enough, and Q_out_new can't be negative
+@@ -1745,10 +1760,16 @@
+     double V_targ=GetVolume(htarget);
+     double A_targ=GetArea(htarget);
+     double seep_targ = _seepage_const*(htarget-_local_GW_head);
+-    Qtarget = -2 * (V_targ - V_old) / (tstep*SEC_PER_DAY) + (-_Qout + (Qin_old + Qin_new) +2.0*precip - ET*(A_old + A_targ) - (seep_old+seep_targ) - (ext_old + ext_new));//[m3/s]
++    // OBWB patch D104: original line was
++    // Qtarget = -2 * (V_targ - V_old) / (tstep*SEC_PER_DAY) + (-_Qout + (Qin_old + Qin_new) +2.0*precip - ET*(A_old + A_targ) - (seep_old+seep_targ) - (ext_old + ext_new));//[m3/s]
++    Qtarget = -2 * (V_targ - V_old) / (tstep*SEC_PER_DAY) + (-Qout_old + (Qin_old + Qin_new) +2.0*precip - ET*(A_old + A_targ) - (seep_old+seep_targ) - (ext_old + ext_new));//[m3/s]
+     Qtarget=max(Qtarget,Qminstage);
+-    if(Qtarget>_Qout) {
+-      Qtarget = w*Qtarget+(1-w)*_Qout; //softer move towards goal - helps with stage undershoot -you can always remove more...
++    // OBWB patch D104: original line was
++    // if(Qtarget>_Qout) {
++    if(Qtarget>Qout_old) {
++      // OBWB patch D104: original line was
++      // Qtarget = w*Qtarget+(1-w)*_Qout; //softer move towards goal - helps with stage undershoot -you can always remove more...
++      Qtarget = w*Qtarget+(1-w)*Qout_old; //softer move towards goal - helps with stage undershoot -you can always remove more...
+     }
+     constraint=RC_TARGET; //target stage
+   }
+@@ -1768,15 +1789,25 @@
+     }
+     else if(Qtarget!=RAV_BLANK_DATA)
+     {
+-      if((Qtarget-_Qout)/tstep>Qdelta) {
+-        Qtarget=_Qout+Qdelta*tstep; //maximum flow increase
++      // OBWB patch D104: original line was
++      // if((Qtarget-_Qout)/tstep>Qdelta) {
++      if((Qtarget-Qout_old)/tstep>Qdelta) {
++        // OBWB patch D104: original line was
++        // Qtarget=_Qout+Qdelta*tstep; //maximum flow increase
++        Qtarget=Qout_old+Qdelta*tstep; //maximum flow increase
+         constraint=RC_MAX_FLOW_INCREASE;
+       }
+-      else if((Qtarget-_Qout)/tstep<-Qdelta_dec) {
+-        Qtarget=_Qout-Qdelta_dec*tstep; //maximum flow decrease
++      // OBWB patch D104: original line was
++      // else if((Qtarget-_Qout)/tstep<-Qdelta_dec) {
++      else if((Qtarget-Qout_old)/tstep<-Qdelta_dec) {
++        // OBWB patch D104: original line was
++        // Qtarget=_Qout-Qdelta_dec*tstep; //maximum flow decrease
++        Qtarget=Qout_old-Qdelta_dec*tstep; //maximum flow decrease
+         constraint=RC_MAX_FLOW_DECREASE; //max flow decrease
+       }
+-      Qoverride=(Qtarget+_Qout)/2.0;//converts from end of time step to average over timestep
++      // OBWB patch D104: original line was
++      // Qoverride=(Qtarget+_Qout)/2.0;//converts from end of time step to average over timestep
++      Qoverride=(Qtarget+Qout_old)/2.0;//converts from end of time step to average over timestep
+     }
+   }
+ 
+@@ -1794,7 +1825,9 @@
+         res_outflow=Qoverride;
+       }
+       else{
+-        res_outflow=max(2*Qoverride-_Qout,Qminstage); //Qoverride is avg over dt, res_outflow is end of dt
++        // OBWB patch D104: original line was
++        // res_outflow=max(2*Qoverride-_Qout,Qminstage); //Qoverride is avg over dt, res_outflow is end of dt
++        res_outflow=max(2*Qoverride-Qout_old,Qminstage); //Qoverride is avg over dt, res_outflow is end of dt
+       }
+     }
+ 
+@@ -1817,11 +1850,15 @@
+       double A_last,V_new;
+       double seep_guess = seep_old;
+       do {
+-        V_new= V_old+((Qin_old+Qin_new)-(_Qout+res_outflow)+2.0*precip-ET*(A_old+A_guess)-(seep_old+seep_guess)-(ext_old+ext_new))/2.0*(tstep*SEC_PER_DAY);
++        // OBWB patch D104: original line was
++        // V_new= V_old+((Qin_old+Qin_new)-(_Qout+res_outflow)+2.0*precip-ET*(A_old+A_guess)-(seep_old+seep_guess)-(ext_old+ext_new))/2.0*(tstep*SEC_PER_DAY);
++        V_new= V_old+((Qin_old+Qin_new)-(Qout_old+res_outflow)+2.0*precip-ET*(A_old+A_guess)-(seep_old+seep_guess)-(ext_old+ext_new))/2.0*(tstep*SEC_PER_DAY);
+         if(V_new<0) {
+           V_new=0;
+           constraint=RC_DRY_RESERVOIR; //drying out reservoir
+-          res_outflow = -2.0 * (V_new - V_old) / (tstep*SEC_PER_DAY) + (-_Qout + 2.0*precip + (Qin_old + Qin_new) - ET*(A_old + 0.0) - (ext_old + ext_new));//[m3/s] //dry it out
++          // OBWB patch D104: original line was
++          // res_outflow = -2.0 * (V_new - V_old) / (tstep*SEC_PER_DAY) + (-_Qout + 2.0*precip + (Qin_old + Qin_new) - ET*(A_old + 0.0) - (ext_old + ext_new));//[m3/s] //dry it out
++          res_outflow = -2.0 * (V_new - V_old) / (tstep*SEC_PER_DAY) + (-Qout_old + 2.0*precip + (Qin_old + Qin_new) - ET*(A_old + 0.0) - (ext_old + ext_new));//[m3/s] //dry it out
+         }
+         stage_new=InterpolateCurve(V_new,_aVolume,_aStage,_Np,false);
+         A_last     = A_guess;
+@@ -1840,7 +1877,9 @@
+     double V_limit =GetVolume(stage_limit);
+     double A_limit =GetArea(stage_limit);
+     double seep_lim=_seepage_const*(stage_limit-_local_GW_head);
+-    res_outflow = -2.0 * (V_limit - V_old) / (tstep*SEC_PER_DAY) + (-_Qout + (Qin_old + Qin_new) + 2.0*precip - ET*(A_old + A_limit) - (seep_old+seep_lim) - (ext_old + ext_new));//[m3/s]
++    // OBWB patch D104: original line was
++    // res_outflow = -2.0 * (V_limit - V_old) / (tstep*SEC_PER_DAY) + (-_Qout + (Qin_old + Qin_new) + 2.0*precip - ET*(A_old + A_limit) - (seep_old+seep_lim) - (ext_old + ext_new));//[m3/s]
++    res_outflow = -2.0 * (V_limit - V_old) / (tstep*SEC_PER_DAY) + (-Qout_old + (Qin_old + Qin_new) + 2.0*precip - ET*(A_old + A_limit) - (seep_old+seep_lim) - (ext_old + ext_new));//[m3/s]
+   }
+ 
+   //other option - returns to stage-discharge curve once max stage exceeded
